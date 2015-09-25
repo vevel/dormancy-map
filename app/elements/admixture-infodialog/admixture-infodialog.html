@@ -1,0 +1,68 @@
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+
+<dom-module id="admixture-infodialog">
+  <template>
+    <style>
+      :host {
+        display:block;
+      }
+      google-chart {
+        height:200px;
+        width:400px;
+        overflow:hidden;
+      }
+    </style>
+    <google-chart type='pie' options="{{_getOptions(colors,text)}}"
+      data="{{_getData(data,labels,label)}}"
+      id="chart">
+    </google-chart>
+  </template>
+</dom-module>
+<script>
+(function() {
+  Polymer({
+    is: 'admixture-infodialog',
+
+    properties: {
+      text: {
+        type:String,
+        value: ''
+      },
+      data: {
+        type: Array,
+        value: function() { return [];}
+      },
+      colors: {
+        type: Array,
+        value: function() { return [];}
+      },
+      labels: {
+        type: Array,
+        values: function() { return [];}
+      },
+      label: {
+        type: String,
+      }
+
+    },
+    _getOptions : function(colors,text) {
+        var options = {'title':text};
+        if (colors) {
+          var sliceColor = {};
+          for (var i=0;i<colors.length;i++) {
+            sliceColor[i] = {'color':colors[i]};
+          }
+          options.slices = sliceColor;
+        }
+        return options;
+    },
+    _getData: function(data,labels,label) {
+        var Kvalues = [[label,'%']];
+        for (var i = 0; i < data.length; i++) {
+            Kvalues.push([labels[i],data[i]]);
+        }
+        return Kvalues;
+    },
+  });
+})();
+</script>
