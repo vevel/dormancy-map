@@ -1,0 +1,322 @@
+<dom-module id="admixture-map">
+  <style>
+    :host {
+        @apply(--layout-vertical);
+        @apply(--layout-flex);
+        @apply(--layout-relative);
+
+     }
+     .list {
+        width:200px;
+        position:absolute;
+        top:10px;
+        left:10px;
+        bottom:10px;
+     }
+
+     .search-container {
+
+     }
+     .list-container {
+      position: absolute;
+      top: 50px;
+      right: 0;
+      bottom: 50px;
+      left: 0;
+     }
+     .count-container {
+       bottom:0px;
+       height:50px;
+       position:absolute;
+       left:0;
+       right:0;
+     }
+     .searchbox {
+       --paper-input-container-underline: {
+           display:none;
+       };
+     }
+     .search-icon {
+       height:40px;
+       margin-left:10px;
+       margin-right:10px;
+     }
+     paper-material {
+       background-color:whitesmoke;
+     }
+     #infoOverlay {
+        margin:10px auto;
+        width:400px;
+        z-index:2;
+        background-color:whitesmoke;
+     }
+     paper-icon-item {
+       --paper-item-icon-width: 75px;
+     }
+     paper-icon-item {
+       cursor:pointer;
+     }
+     paper-icon-item:hover {
+       background-color: #DCEDC8;
+     }
+     iron-list {
+       height: 100%;
+     }
+     .legend {
+        position:absolute;
+        top:10px;
+        right:10px;
+        height:50px;
+        width:110px;
+     }
+
+     .legend li {
+       list-style:none;
+     }
+     .legend ul {
+        padding:0;
+     }
+     .legend-container {
+        padding:10px;
+     }
+  </style>
+  <template>
+    <div class="fit">
+      <google-map latitude="59.08" map="{{map}}" id="mapelement"  longitude="15.653635" zoom="6" additional-map-options='{"panControl": "false","panControlOptions":{"position":"3"},"scaleControl": "true","zoomControlOptions":{"style":"2","position":"8"},"mapTypeControl": "true","mapTypeControlOptions": {"style": "4","position":"2"}}'>
+        <google-map-marker id="accessionMarker" z-index="9999" latitude="0" longitude="0" hidden$="{{!showAccessionMarker}}"></google-map-marker>
+      </google-map>
+      <google-map-markerclusterer id="markerclusterer" map="{{map}}" markers="{{markers}}" average-center="{{averageCenter}}"
+      styles="{{styles}}" on-google-map-markercluster-clustering-end="onClusteringEnd" colors="{{colors}}">
+        <admixture-clustericon class="cluster-icon" colors="{{colors}}"></admixture-clustericon>
+      </google-map-markerclusterer>
+    </div>
+    <aside class="list">
+      <paper-material elevation="1" class="search-container">
+        <div class="layout horizontal">
+          <iron-icon icon="search" class="search-icon"></iron-icon>
+          <paper-input label="Search" no-label-float class="searchbox" value="{{queryString}}"></paper-input>
+        </div>
+      </paper-material>
+      <paper-material elevation="1" class="list-container">
+        <iron-list items="[[displayMarkers]]" id="list" on-mouseover="onMouseOverList" on-mouseout="onMouseOutList" on-click="onMouseClickList">
+          <template>
+            <paper-icon-item ix="{{index}}">
+              <div item-icon>
+                <canvas-piechart data="{{item.data}}" size="50" colors="{{colors}}"/>
+              </div>
+              <paper-item-body two-line>
+                <div>{{item.name}}</div>
+                <div secondary>{{item.accId}}</div>
+                <div style$="{{_getGR21StyleFromItem(item.gr21)}}"><span>GR21:</span></div>
+              </paper-item-body>
+            </paper-icon-item>
+          </template>
+        </iron-list>
+      </paper-material>
+      <paper-material elevation="1" class="count-container">
+        <span>#</span>
+        <span>{{_getCount(displayMarkers)}}</span>
+      </paper-material>
+    </aside>
+    <aside class="legend">
+       <paper-material elevation="1" class="legend-container">
+        <div class="layout vertical">
+           <h4 style="margin-bottom:0">Legend</h4>
+           <ul>
+             <template is="dom-repeat" items="{{colors}}">
+               <li>
+                 <svg xmlns="http://www.w3.org/2000/svg" height="10px" width="10px">
+                    <circle cx="5" cy="5" r="5" fill$="{{item}}" />
+                </svg>
+                 <span style="margin-left:10px">{{_getLabelFromIndex(colors,index)}}</span>
+               </li>
+              </template>
+          </ul>
+        </div>
+      </paper-material>
+    </aside>
+    <admixture-infodialog id="infoOverlay" colors="{{colors}}" labels="{{datasource.labels}}" label="{{datasource.label}}" hidden$="{{!showOverlay}}" class="shadow-transition"></admixture-infodialog>
+  </template>
+  <script>
+    /* global google */
+     (function() {
+
+      Polymer({
+        is: 'admixture-map',
+
+        properties: {
+          markers: {
+            type:Array,
+            value: function() {return [];}
+          },
+          map: {
+            type:Object
+          },
+          displayMarkers: {
+            type:Array,
+            value: function() {return [];}
+          },
+          averageCenter: {
+            type:Boolean,
+            value:true
+          },
+          showOverlay: {
+            type: Boolean,
+            value:false
+          },
+          showAccessionMarker: {
+            type: Boolean,
+            value: false
+          },
+          queryString: {
+            type:String,
+            value: '',
+            observer:'_filterDisplayMarkers'
+          },
+          datasource: {
+            type: Object,
+          },
+          colors: {
+            computed:'_getColors(datasource)'
+          },
+          kcount:  Number
+
+        },
+        listeners: {
+          'google-map-markercluster-mouseover':'onMouseOverCluster',
+          'google-map-markercluster-mouseout':'onMouseOutCluster',
+          'google-map-markercluster-click': 'onClickCluster',
+          'marker-mouseover':'onMouseOverMarker',
+          'marker-mouseout':'onMouseOutMarker',
+          'marker-click':'onClickMarker',
+        },
+        infoWindow: null,
+        onMouseOverCluster: function(e) {
+          var cluster = Polymer.dom(e).localTarget;
+          this.displayMarkers = this._getMarkersFromCluster(cluster);
+          this._showOverlay(cluster.clusterSubIcon.data,'Cluster of ' + cluster.markers.length+' accessions');
+        },
+        onMouseOutCluster: function() {
+          this._hideOverlay();
+          this.displayMarkers = this._getVisibleMarkers();
+        },
+        onMouseOverMarker: function(e) {
+          this._showOverlay(e.detail.data,this._getTitleFromMarker(e.detail));
+        },
+        onMouseOutMarker: function() {
+          this._hideOverlay();
+        },
+        _hideOverlay: function() {
+          this.toggleClass('shadow-elevation-16dp',false,this.$.infoOverlay);
+          this.showOverlay = false;
+        },
+        _showOverlay: function(data, text) {
+          this.showOverlay = true;
+          this.$.infoOverlay.text = text;
+          this.$.infoOverlay.data = data;
+          this.toggleClass('shadow-elevation-16dp',true,this.$.infoOverlay);
+        },
+        _getMarkersFromCluster: function(cluster)  {
+          return cluster.markers;
+        },
+        _getColors: function(datasource) {
+          return datasource.colors;
+        },
+        _getLabelFromIndex: function(colors,index) {
+          return this.datasource.labels[index];
+        },
+        _getVisibleMarkers : function() {
+          var visibleMarkers = [];
+          for (var i = 0;i<this.$.markerclusterer.clusters.length;i++) {
+            var cluster = this.$.markerclusterer.clusters[i];
+            visibleMarkers = visibleMarkers.concat(cluster.markers);
+          }
+          return visibleMarkers;
+        },
+        _getGR21StyleFromItem: function(value) {
+          return 'width:'+value+'%;background-color: #dc3912;display: inline;float: left;height: 0.2em;margin: 0 10px 0 0;min-width: 1px;';
+        },
+        onClusteringEnd:  function() {
+          this.displayMarkers = this._getVisibleMarkers();
+        },
+        onClickCluster: function() {
+          this._hideOverlay();
+        },
+        onMouseOverList : function(e) {
+          e.stopPropagation();
+          if (e.target !== e.currentTarget) {
+            var ix = this._getListItemIxFromEvent(e.target);
+            if (ix !== null) {
+              var marker = this.displayMarkers[ix];
+              this.$.accessionMarker.latitude = marker.position.lat();
+              this.$.accessionMarker.longitude = marker.position.lng();
+              this.showAccessionMarker = true;
+              this._showOverlay(marker.data,this._getTitleFromMarker(marker));
+            }
+          }
+        },
+        onMouseClickList: function(e) {
+           if (e.target !== e.currentTarget) {
+            var ix = this._getListItemIxFromEvent(e.target);
+            if (ix !== null) {
+              var marker = this.displayMarkers[ix];
+              var position = marker.position;
+              this.map.setCenter(position);
+              this.map.setZoom(8);
+              this._hideOverlay();
+            }
+          }
+        },
+        onClickMarker: function(e) {
+          if (!this.infoWindow) {
+            this.infoWindow = new google.maps.InfoWindow();
+          }
+          var marker = e.target;
+          var popup = document.createElement('admixture-infodialog');
+          popup.colors = this.colors;
+          popup.text = 'Name: ' + marker.name +' ('+marker.accId+')';
+          popup.data = marker.data;
+          this.infoWindow.setContent(popup);
+          this.infoWindow.setPosition(marker.position);
+          this.infoWindow.open(this.map);
+        },
+        onMouseOutList: function(e) {
+          e.stopPropagation();
+          this.showAccessionMarker =false;
+          this._hideOverlay();
+        },
+        _getCount: function(displayMarkers) {
+          return displayMarkers.length;
+        },
+        _getListItemIxFromEvent: function(ele) {
+          do {
+            if (ele.tagName === 'PAPER-ICON-ITEM') {
+              return ele.ix;
+            }
+            ele = ele.parentElement;
+          } while (ele);
+          return null;
+        },
+
+        _getTitleFromMarker: function(marker) {
+          return 'Name: ' + marker.name +' ('+marker.accId+')';
+        },
+
+        _filterDisplayMarkers: function(newValue,oldValue) {
+           var markers = this.displayMarkers;
+           if (newValue === '' || newValue.length < oldValue.length || !isNaN(newValue)) {
+             markers = this._getVisibleMarkers();
+           }
+           var foundMarkers = [];
+           for (var i=0;i<markers.length;i++) {
+              var marker = markers[i];
+              if (marker.name.indexOf(newValue) > -1 || marker.accId === newValue) {
+                foundMarkers.push(marker);
+              }
+            }
+           this.displayMarkers = foundMarkers;
+        },
+      });
+    })();
+  </script>
+</dom-module>
